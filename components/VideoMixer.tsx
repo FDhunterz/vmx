@@ -592,7 +592,7 @@ export default function VideoMixer() {
                   border: '1px solid #dee2e6',
                   borderRadius: '4px'
                 }}
-              />
+              /> 
             </div>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
