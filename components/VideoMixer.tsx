@@ -38,6 +38,8 @@ export default function VideoMixer() {
     height: 1080,
     fps: 30
   })
+  const [encoder, setEncoder] = useState<string>('cpu')
+  const [preset, setPreset] = useState<string>('medium')
   const [isBuilding, setIsBuilding] = useState(false)
   const [buildProgress, setBuildProgress] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -119,11 +121,17 @@ export default function VideoMixer() {
   const handleThumbnailUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // Validate image file
-      if (!file.type.startsWith('image/')) {
-        setError('File thumbnail harus berupa gambar')
+      // Validate image file type
+      const validImageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/bmp', 'image/gif', 'image/webp']
+      const validExtensions = ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp']
+      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+      
+      if (!file.type.startsWith('image/') || 
+          (!validImageTypes.includes(file.type) && !validExtensions.includes(fileExtension))) {
+        setError('File thumbnail harus berupa gambar (PNG, JPG, JPEG, BMP, GIF, atau WEBP)')
         return
       }
+      setError('')
       setThumbnailFile(file)
       setError('')
     }
@@ -220,9 +228,10 @@ export default function VideoMixer() {
           console.log('[VMX] Total upload size (audio + thumbnail):', ((totalAudioSize + thumbnailFile.size) / 1024 / 1024).toFixed(2), 'MB')
         }
         // Add query parameters for black-screen mode
-        url = `${apiUrl}/api/join/black-screen?width=${buildOptions.width}&height=${buildOptions.height}&fps=${buildOptions.fps}`
+        url = `${apiUrl}/api/join/black-screen?width=${buildOptions.width}&height=${buildOptions.height}&fps=${buildOptions.fps}&encoder=${encoder}&preset=${preset}`
         console.log('[VMX] Step 4: Black-screen mode - URL:', url)
         console.log('[VMX] Build options:', buildOptions)
+        console.log('[VMX] Encoder:', encoder, 'Preset:', preset)
         setBuildProgress(thumbnailFile ? 'Menggabungkan audio dengan thumbnail...' : 'Menggabungkan audio dengan black screen...')
       } else {
         // Add video file for video-loop mode
@@ -232,8 +241,9 @@ export default function VideoMixer() {
           formData.append('video', videoFile)
           console.log('[VMX] Total upload size (audio + video):', ((totalAudioSize + videoFile.size) / 1024 / 1024).toFixed(2), 'MB')
         }
-        url = `${apiUrl}/api/join/video-loop`
+        url = `${apiUrl}/api/join/video-loop?encoder=${encoder}&preset=${preset}`
         console.log('[VMX] Step 4: Video-loop mode - URL:', url)
+        console.log('[VMX] Encoder:', encoder, 'Preset:', preset)
         setBuildProgress('Menggabungkan audio dengan video loop...')
       }
 
@@ -490,6 +500,137 @@ export default function VideoMixer() {
         </label>
       </div>
 
+      {/* Encoder and Preset Selection (for both modes) */}
+      <div style={{
+        padding: '1.5rem',
+        border: '1px solid #dee2e6',
+        borderRadius: '8px',
+        background: '#f8f9fa'
+      }}>
+        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Encoder & Preset</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Encoder
+            </label>
+            <select
+              value={encoder}
+              onChange={(e) => {
+                setEncoder(e.target.value)
+                // Reset preset to default when encoder changes
+                if (e.target.value === 'cpu') {
+                  setPreset('medium')
+                } else if (e.target.value === 'nvenc') {
+                  setPreset('p4')
+                } else if (e.target.value === 'qsv') {
+                  setPreset('medium')
+                } else if (e.target.value === 'amf') {
+                  setPreset('balanced')
+                } else if (e.target.value === 'vaapi') {
+                  setPreset('medium')
+                } else if (e.target.value === 'videotoolbox') {
+                  setPreset('medium')
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #dee2e6',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+            >
+              <option value="cpu">CPU (libx264)</option>
+              <option value="nvenc">NVIDIA GPU (NVENC)</option>
+              <option value="qsv">Intel GPU (Quick Sync)</option>
+              <option value="amf">AMD GPU (AMF)</option>
+              <option value="vaapi">VAAPI (Linux)</option>
+              <option value="videotoolbox">Apple GPU (VideoToolbox - M1/M2/M3/M4)</option>
+            </select>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+              Pilih encoder untuk rendering. GPU encoder lebih cepat tapi memerlukan hardware yang sesuai.
+            </p>
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Preset
+            </label>
+            <select
+              value={preset}
+              onChange={(e) => setPreset(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #dee2e6',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+            >
+              {encoder === 'cpu' && (
+                <>
+                  <option value="ultrafast">Ultrafast (Tercepat)</option>
+                  <option value="superfast">Superfast</option>
+                  <option value="veryfast">Veryfast</option>
+                  <option value="faster">Faster</option>
+                  <option value="fast">Fast</option>
+                  <option value="medium">Medium (Default)</option>
+                  <option value="slow">Slow</option>
+                  <option value="slower">Slower</option>
+                  <option value="veryslow">Veryslow (Terbaik)</option>
+                </>
+              )}
+              {encoder === 'nvenc' && (
+                <>
+                  <option value="p1">P1 (Tercepat)</option>
+                  <option value="p2">P2</option>
+                  <option value="p3">P3</option>
+                  <option value="p4">P4 (Default)</option>
+                  <option value="p5">P5</option>
+                  <option value="p6">P6</option>
+                  <option value="p7">P7 (Terbaik)</option>
+                </>
+              )}
+              {encoder === 'qsv' && (
+                <>
+                  <option value="veryfast">Veryfast (Tercepat)</option>
+                  <option value="faster">Faster</option>
+                  <option value="fast">Fast</option>
+                  <option value="medium">Medium (Default)</option>
+                  <option value="slow">Slow</option>
+                  <option value="slower">Slower</option>
+                  <option value="veryslow">Veryslow (Terbaik)</option>
+                </>
+              )}
+              {encoder === 'amf' && (
+                <>
+                  <option value="speed">Speed (Tercepat)</option>
+                  <option value="balanced">Balanced (Default)</option>
+                  <option value="quality">Quality (Terbaik)</option>
+                </>
+              )}
+              {encoder === 'vaapi' && (
+                <>
+                  <option value="fast">Fast (Tercepat)</option>
+                  <option value="medium">Medium (Default)</option>
+                  <option value="slow">Slow (Terbaik)</option>
+                </>
+              )}
+              {encoder === 'videotoolbox' && (
+                <>
+                  <option value="ultrafast">Ultrafast (Tercepat)</option>
+                  <option value="fast">Fast</option>
+                  <option value="medium">Medium (Default)</option>
+                  <option value="slow">Slow (Terbaik)</option>
+                </>
+              )}
+            </select>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+              Preset mempengaruhi kecepatan dan kualitas encoding. Lebih cepat = kualitas lebih rendah.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Video Upload (for video-loop mode) */}
       {mode === 'video-loop' && (
         <div style={{
@@ -742,11 +883,13 @@ export default function VideoMixer() {
             <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#6c757d' }}>
               Upload gambar thumbnail untuk digunakan sebagai background. Jika tidak diupload, akan menggunakan black screen.
               Gambar akan otomatis di-rescale sesuai ukuran video.
+              <br />
+              <strong>Format yang didukung:</strong> PNG, JPG, JPEG, BMP, GIF, WEBP
             </p>
             <input
               ref={thumbnailInputRef}
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/jpg,image/bmp,image/gif,image/webp"
               onChange={handleThumbnailUpload}
               style={{ display: 'none' }}
             />

@@ -11,6 +11,8 @@ interface QueueItem {
   width: number
   height: number
   fps: number
+  encoder?: string
+  preset?: string
   createdAt: string
   updatedAt: string
   errorMessage?: string
@@ -259,6 +261,21 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
                     <div>Height: {item.height}px</div>
                     <div>FPS: {item.fps}</div>
                   </>
+                )}
+                {item.encoder && (
+                  <div>
+                    <strong>Encoder:</strong> {item.encoder === 'cpu' ? 'CPU (libx264)' : 
+                      item.encoder === 'nvenc' ? 'NVIDIA GPU (NVENC)' :
+                      item.encoder === 'qsv' ? 'Intel GPU (Quick Sync)' :
+                      item.encoder === 'amf' ? 'AMD GPU (AMF)' :
+                      item.encoder === 'vaapi' ? 'VAAPI (Linux)' :
+                      item.encoder === 'videotoolbox' ? 'Apple GPU (VideoToolbox)' : item.encoder}
+                  </div>
+                )}
+                {item.preset && (
+                  <div>
+                    <strong>Preset:</strong> {item.preset}
+                  </div>
                 )}
                 <div>Created: {formatDate(item.createdAt)}</div>
                 <div>Updated: {formatDate(item.updatedAt)}</div>
