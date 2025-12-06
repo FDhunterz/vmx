@@ -260,8 +260,10 @@ export default function VideoMixer() {
       const controller = new AbortController()
       startTime = Date.now()
       const timeoutId = setTimeout(() => {
-        const elapsed = (Date.now() - startTime) / 1000 / 60
-        console.error('[VMX] Request timeout after', elapsed.toFixed(2), 'minutes')
+        if (startTime) {
+          const elapsed = (Date.now() - startTime) / 1000 / 60
+          console.error('[VMX] Request timeout after', elapsed.toFixed(2), 'minutes')
+        }
         controller.abort()
         setError('Request timeout - Proses memakan waktu terlalu lama. Silakan coba lagi atau gunakan file yang lebih kecil.')
       }, estimatedTimeout)
@@ -281,7 +283,7 @@ export default function VideoMixer() {
           // CORS headers akan otomatis ditangani oleh browser dan server
         })
 
-        const fetchTime = (Date.now() - startTime) / 1000
+        const fetchTime = startTime ? (Date.now() - startTime) / 1000 : 0
         console.log('[VMX] Fetch response received after', fetchTime.toFixed(2), 'seconds')
         console.log('[VMX] Response status:', response.status)
         console.log('[VMX] Response ok:', response.ok)
