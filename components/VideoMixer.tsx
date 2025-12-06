@@ -32,6 +32,7 @@ export default function VideoMixer() {
   const [mode, setMode] = useState<'black-screen' | 'video-loop'>('black-screen')
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
   const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null)
   const [buildOptions, setBuildOptions] = useState<BuildOptions>({
     width: 1920,
     height: 1080,
@@ -43,6 +44,7 @@ export default function VideoMixer() {
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const audioInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
+  const thumbnailInputRef = useRef<HTMLInputElement>(null)
 
   // Save API URL to localStorage
   const saveApiUrl = (url: string) => {
@@ -110,6 +112,19 @@ export default function VideoMixer() {
     const file = e.target.files?.[0]
     if (file) {
       setVideoFile(file)
+      setError('')
+    }
+  }
+
+  const handleThumbnailUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate image file
+      if (!file.type.startsWith('image/')) {
+        setError('File thumbnail harus berupa gambar')
+        return
+      }
+      setThumbnailFile(file)
       setError('')
     }
   }
@@ -197,11 +212,18 @@ export default function VideoMixer() {
 
       let url = ''
       if (mode === 'black-screen') {
+        // Add thumbnail if provided
+        if (thumbnailFile) {
+          const thumbnailSizeMB = thumbnailFile.size / 1024 / 1024
+          console.log('[VMX] Adding thumbnail file:', thumbnailFile.name, `(${thumbnailSizeMB.toFixed(2)} MB)`)
+          formData.append('thumbnail', thumbnailFile)
+          console.log('[VMX] Total upload size (audio + thumbnail):', ((totalAudioSize + thumbnailFile.size) / 1024 / 1024).toFixed(2), 'MB')
+        }
         // Add query parameters for black-screen mode
         url = `${apiUrl}/api/join/black-screen?width=${buildOptions.width}&height=${buildOptions.height}&fps=${buildOptions.fps}`
         console.log('[VMX] Step 4: Black-screen mode - URL:', url)
         console.log('[VMX] Build options:', buildOptions)
-        setBuildProgress('Menggabungkan audio dengan black screen...')
+        setBuildProgress(thumbnailFile ? 'Menggabungkan audio dengan thumbnail...' : 'Menggabungkan audio dengan black screen...')
       } else {
         // Add video file for video-loop mode
         if (videoFile) {
@@ -271,62 +293,21 @@ export default function VideoMixer() {
           throw new Error(errorMessage)
         }
 
-        console.log('[VMX] Step 6: Response OK, starting blob download...')
-        setBuildProgress('Mendownload hasil video...')
-
-        // Get the video blob with timeout handling
-        // Use Promise.race to add timeout for blob download (30 minutes)
-        const blobStartTime = Date.now()
-        console.log('[VMX] Starting blob download at:', new Date().toISOString())
+        // Response is now JSON with queueId (not blob)
+        console.log('[VMX] Step 6: Response OK, parsing JSON...')
+        const responseData = await response.json()
+        console.log('[VMX] Response data:', responseData)
         
-        const blobPromise = response.blob()
-        const timeoutPromise = new Promise<never>((_, reject) => {
+        if (responseData.success && responseData.queueId) {
+          console.log('[VMX] Request queued successfully. Queue ID:', responseData.queueId)
+          setBuildProgress('Request ditambahkan ke queue. Silakan cek tab Queue untuk melihat progress.')
           setTimeout(() => {
-            const elapsed = (Date.now() - blobStartTime) / 1000 / 60
-            console.error('[VMX] Blob download timeout after', elapsed.toFixed(2), 'minutes')
-            reject(new Error('Timeout saat mendownload video hasil (lebih dari 30 menit)'))
-          }, 1800000) // 30 minutes
-        })
-
-        let blob: Blob
-        try {
-          blob = await Promise.race([blobPromise, timeoutPromise])
-          const blobTime = (Date.now() - blobStartTime) / 1000
-          console.log('[VMX] Blob downloaded successfully after', blobTime.toFixed(2), 'seconds')
-          console.log('[VMX] Blob size:', (blob.size / 1024 / 1024).toFixed(2), 'MB')
-          console.log('[VMX] Blob type:', blob.type)
-        } catch (blobErr: any) {
-          console.error('[VMX] Blob download error:', blobErr)
-          if (blobErr.message?.includes('Timeout')) {
-            throw new Error('Timeout saat mendownload video hasil. File mungkin terlalu besar.')
-          }
-          throw blobErr
+            setBuildProgress('')
+            setIsBuilding(false)
+          }, 3000)
+        } else {
+          throw new Error(responseData.error || 'Failed to queue request')
         }
-        
-        console.log('[VMX] Step 7: Creating download link...')
-        const videoUrl = URL.createObjectURL(blob)
-
-        // Create download link
-        const a = document.createElement('a')
-        a.href = videoUrl
-        const filename = `output-${Date.now()}.mp4`
-        a.download = filename
-        console.log('[VMX] Download filename:', filename)
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(videoUrl)
-
-        const totalTime = (Date.now() - startTime) / 1000 / 60
-        console.log('[VMX] ========== Build Video Completed Successfully ==========')
-        console.log('[VMX] Total time:', totalTime.toFixed(2), 'minutes')
-        console.log('[VMX] ========================================================')
-        
-        setBuildProgress('Selesai! Video berhasil dibuat dan didownload.')
-        setTimeout(() => {
-          setBuildProgress('')
-          setIsBuilding(false)
-        }, 2000)
       } finally {
         clearTimeout(timeoutId) // Always clear timeout
         console.log('[VMX] Timeout cleared')
@@ -493,6 +474,7 @@ export default function VideoMixer() {
             onChange={(e) => {
               setMode('black-screen')
               setVideoFile(null)
+              // Keep thumbnail for black-screen mode
             }}
           />
           <span>Black Screen (Audio saja)</span>
@@ -689,64 +671,137 @@ export default function VideoMixer() {
 
       {/* Build Options (for black-screen mode) */}
       {mode === 'black-screen' && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Opsi Build</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                Width (px)
-              </label>
-              <input
-                type="number"
-                value={buildOptions.width}
-                onChange={(e) => setBuildOptions(prev => ({ ...prev, width: parseInt(e.target.value) || 1920 }))}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px'
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                Height (px)
-              </label>
-              <input
-                type="number"
-                value={buildOptions.height}
-                onChange={(e) => setBuildOptions(prev => ({ ...prev, height: parseInt(e.target.value) || 1080 }))}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px'
-                }}
-              /> 
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                FPS
-              </label>
-              <input
-                type="number"
-                value={buildOptions.fps}
-                onChange={(e) => setBuildOptions(prev => ({ ...prev, fps: parseInt(e.target.value) || 30 }))}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px'
-                }}
-              />
+        <>
+          <div style={{
+            padding: '1.5rem',
+            border: '1px solid #dee2e6',
+            borderRadius: '8px',
+            background: '#f8f9fa'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Opsi Build</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  Width (px)
+                </label>
+                <input
+                  type="number"
+                  value={buildOptions.width}
+                  onChange={(e) => setBuildOptions(prev => ({ ...prev, width: parseInt(e.target.value) || 1920 }))}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  Height (px)
+                </label>
+                <input
+                  type="number"
+                  value={buildOptions.height}
+                  onChange={(e) => setBuildOptions(prev => ({ ...prev, height: parseInt(e.target.value) || 1080 }))}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px'
+                  }}
+                /> 
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  FPS
+                </label>
+                <input
+                  type="number"
+                  value={buildOptions.fps}
+                  onChange={(e) => setBuildOptions(prev => ({ ...prev, fps: parseInt(e.target.value) || 30 }))}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* Thumbnail Upload (for black-screen mode) */}
+          <div style={{
+            padding: '1.5rem',
+            border: '2px dashed #dee2e6',
+            borderRadius: '8px',
+            background: '#f8f9fa'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Thumbnail (Optional)</h3>
+            <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#6c757d' }}>
+              Upload gambar thumbnail untuk digunakan sebagai background. Jika tidak diupload, akan menggunakan black screen.
+              Gambar akan otomatis di-rescale sesuai ukuran video.
+            </p>
+            <input
+              ref={thumbnailInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleThumbnailUpload}
+              style={{ display: 'none' }}
+            />
+            {thumbnailFile ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem',
+                background: 'white',
+                borderRadius: '4px',
+                marginBottom: '0.5rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span>🖼️ {thumbnailFile.name}</span>
+                  <span style={{ fontSize: '0.875rem', color: '#6c757d' }}>
+                    ({(thumbnailFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setThumbnailFile(null)
+                    if (thumbnailInputRef.current) thumbnailInputRef.current.value = ''
+                  }}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Hapus
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => thumbnailInputRef.current?.click()}
+                style={{
+                  padding: '1rem 2rem',
+                  background: '#17a2b8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                🖼️ Upload Thumbnail
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       {/* Error Message */}
