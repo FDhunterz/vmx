@@ -56,6 +56,7 @@ export default function VideoMixer() {
   // Check API health
   const checkApiHealth = useCallback(async () => {
     try {
+      console.log('[VMX] Health check: Checking', `${apiUrl}/`)
       const response = await fetch(`${apiUrl}/`, {
         method: 'GET',
         headers: {
@@ -63,16 +64,25 @@ export default function VideoMixer() {
         },
       })
 
+      console.log('[VMX] Health check response status:', response.status)
       if (response.ok) {
         const data = await response.json()
+        console.log('[VMX] Health check response data:', data)
         if (data.status === 'online' || data.status === 'ok') {
           setApiStatus('online')
           return true
         }
       }
+      console.warn('[VMX] Health check: API is offline')
       setApiStatus('offline')
       return false
-    } catch (err) {
+    } catch (err: any) {
+      console.error('[VMX] Health check error:', err)
+      console.error('[VMX] Health check error details:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      })
       setApiStatus('offline')
       return false
     }
@@ -137,12 +147,19 @@ export default function VideoMixer() {
   }
 
   const buildVideo = async () => {
+    console.log('[VMX] ========== Build Video Started ==========')
+    console.log('[VMX] Mode:', mode)
+    console.log('[VMX] Audio files count:', audioFiles.length)
+    console.log('[VMX] Video file:', videoFile ? videoFile.name : 'none')
+    
     if (audioFiles.length === 0) {
+      console.error('[VMX] Error: No audio files')
       setError('Minimal harus ada 1 file audio')
       return
     }
 
     if (mode === 'video-loop' && !videoFile) {
+      console.error('[VMX] Error: Video file required for video-loop mode')
       setError('Mode video-loop memerlukan file video')
       return
     }
@@ -150,79 +167,197 @@ export default function VideoMixer() {
     setIsBuilding(true)
     setError('')
     setBuildProgress('Menyiapkan file...')
+    console.log('[VMX] Step 1: Preparing files...')
+    
+    let startTime: number | null = null
 
     try {
       // Check API health first
+      console.log('[VMX] Step 2: Checking API health at', apiUrl)
       const isHealthy = await checkApiHealth()
+      console.log('[VMX] API health check result:', isHealthy)
+      
       if (!isHealthy) {
+        console.error('[VMX] API server is not healthy')
         throw new Error(`API server tidak tersedia. Pastikan server berjalan di ${apiUrl}`)
       }
 
+      console.log('[VMX] Step 3: Creating FormData...')
       const formData = new FormData()
 
       // Add audio files
+      let totalAudioSize = 0
       audioFiles.forEach((audioFile, index) => {
+        const fileSizeMB = audioFile.file.size / 1024 / 1024
+        totalAudioSize += audioFile.file.size
+        console.log(`[VMX] Adding audio file ${index + 1}:`, audioFile.name, `(${fileSizeMB.toFixed(2)} MB)`)
         formData.append(`audio${index + 1}`, audioFile.file)
       })
+      console.log('[VMX] Total audio files size:', (totalAudioSize / 1024 / 1024).toFixed(2), 'MB')
 
       let url = ''
       if (mode === 'black-screen') {
         // Add query parameters for black-screen mode
         url = `${apiUrl}/api/join/black-screen?width=${buildOptions.width}&height=${buildOptions.height}&fps=${buildOptions.fps}`
+        console.log('[VMX] Step 4: Black-screen mode - URL:', url)
+        console.log('[VMX] Build options:', buildOptions)
         setBuildProgress('Menggabungkan audio dengan black screen...')
       } else {
         // Add video file for video-loop mode
         if (videoFile) {
+          const videoSizeMB = videoFile.size / 1024 / 1024
+          console.log('[VMX] Adding video file:', videoFile.name, `(${videoSizeMB.toFixed(2)} MB)`)
           formData.append('video', videoFile)
+          console.log('[VMX] Total upload size (audio + video):', ((totalAudioSize + videoFile.size) / 1024 / 1024).toFixed(2), 'MB')
         }
         url = `${apiUrl}/api/join/video-loop`
+        console.log('[VMX] Step 4: Video-loop mode - URL:', url)
         setBuildProgress('Menggabungkan audio dengan video loop...')
       }
 
       setBuildProgress('Mengirim request ke server...')
+      console.log('[VMX] Step 5: Sending request to server...')
 
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-        // CORS headers akan otomatis ditangani oleh browser dan server
-      })
+      // Calculate estimated timeout based on audio duration
+      // For very long audio (50+ minutes), we need much longer timeout
+      // Base timeout: 6 hours (21600000ms) for processing very long files
+      // Add extra buffer: 1 hour per 10 minutes of audio
+      const estimatedTimeout = 21600000 // 6 hours base timeout
+      console.log('[VMX] Timeout set to:', estimatedTimeout / 1000 / 60, 'minutes (', estimatedTimeout / 1000 / 3600, 'hours)')
+      
+      const controller = new AbortController()
+      startTime = Date.now()
+      const timeoutId = setTimeout(() => {
+        const elapsed = (Date.now() - startTime) / 1000 / 60
+        console.error('[VMX] Request timeout after', elapsed.toFixed(2), 'minutes')
+        controller.abort()
+        setError('Request timeout - Proses memakan waktu terlalu lama. Silakan coba lagi atau gunakan file yang lebih kecil.')
+      }, estimatedTimeout)
 
-      if (!response.ok) {
-        let errorMessage = `Server error: ${response.status}`
-        try {
-          const errorText = await response.text()
-          if (errorText) {
-            errorMessage = errorText
+      try {
+        console.log('[VMX] Fetch request started at:', new Date().toISOString())
+        console.log('[VMX] Request URL:', url)
+        console.log('[VMX] Request method: POST')
+        console.log('[VMX] FormData entries count:', Array.from(formData.entries()).length)
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+          // Keep-alive untuk koneksi yang lama
+          keepalive: false,
+          // CORS headers akan otomatis ditangani oleh browser dan server
+        })
+
+        const fetchTime = (Date.now() - startTime) / 1000
+        console.log('[VMX] Fetch response received after', fetchTime.toFixed(2), 'seconds')
+        console.log('[VMX] Response status:', response.status)
+        console.log('[VMX] Response ok:', response.ok)
+        console.log('[VMX] Response headers:', Object.fromEntries(response.headers.entries()))
+
+        if (!response.ok) {
+          console.error('[VMX] Response not OK:', response.status, response.statusText)
+          let errorMessage = `Server error: ${response.status}`
+          try {
+            const errorText = await response.text()
+            console.error('[VMX] Error response body:', errorText)
+            if (errorText) {
+              errorMessage = errorText
+            }
+          } catch (e) {
+            console.error('[VMX] Failed to read error response:', e)
+            // Ignore if can't parse error
           }
-        } catch (e) {
-          // Ignore if can't parse error
+          throw new Error(errorMessage)
         }
-        throw new Error(errorMessage)
+
+        console.log('[VMX] Step 6: Response OK, starting blob download...')
+        setBuildProgress('Mendownload hasil video...')
+
+        // Get the video blob with timeout handling
+        // Use Promise.race to add timeout for blob download (30 minutes)
+        const blobStartTime = Date.now()
+        console.log('[VMX] Starting blob download at:', new Date().toISOString())
+        
+        const blobPromise = response.blob()
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            const elapsed = (Date.now() - blobStartTime) / 1000 / 60
+            console.error('[VMX] Blob download timeout after', elapsed.toFixed(2), 'minutes')
+            reject(new Error('Timeout saat mendownload video hasil (lebih dari 30 menit)'))
+          }, 1800000) // 30 minutes
+        })
+
+        let blob: Blob
+        try {
+          blob = await Promise.race([blobPromise, timeoutPromise])
+          const blobTime = (Date.now() - blobStartTime) / 1000
+          console.log('[VMX] Blob downloaded successfully after', blobTime.toFixed(2), 'seconds')
+          console.log('[VMX] Blob size:', (blob.size / 1024 / 1024).toFixed(2), 'MB')
+          console.log('[VMX] Blob type:', blob.type)
+        } catch (blobErr: any) {
+          console.error('[VMX] Blob download error:', blobErr)
+          if (blobErr.message?.includes('Timeout')) {
+            throw new Error('Timeout saat mendownload video hasil. File mungkin terlalu besar.')
+          }
+          throw blobErr
+        }
+        
+        console.log('[VMX] Step 7: Creating download link...')
+        const videoUrl = URL.createObjectURL(blob)
+
+        // Create download link
+        const a = document.createElement('a')
+        a.href = videoUrl
+        const filename = `output-${Date.now()}.mp4`
+        a.download = filename
+        console.log('[VMX] Download filename:', filename)
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(videoUrl)
+
+        const totalTime = (Date.now() - startTime) / 1000 / 60
+        console.log('[VMX] ========== Build Video Completed Successfully ==========')
+        console.log('[VMX] Total time:', totalTime.toFixed(2), 'minutes')
+        console.log('[VMX] ========================================================')
+        
+        setBuildProgress('Selesai! Video berhasil dibuat dan didownload.')
+        setTimeout(() => {
+          setBuildProgress('')
+          setIsBuilding(false)
+        }, 2000)
+      } finally {
+        clearTimeout(timeoutId) // Always clear timeout
+        console.log('[VMX] Timeout cleared')
       }
 
-      setBuildProgress('Mendownload hasil video...')
-
-      // Get the video blob
-      const blob = await response.blob()
-      const videoUrl = URL.createObjectURL(blob)
-
-      // Create download link
-      const a = document.createElement('a')
-      a.href = videoUrl
-      a.download = `output-${Date.now()}.mp4`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(videoUrl)
-
-      setBuildProgress('Selesai! Video berhasil dibuat dan didownload.')
-      setTimeout(() => {
-        setBuildProgress('')
-        setIsBuilding(false)
-      }, 2000)
-
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membangun video')
+      const elapsed = startTime ? (Date.now() - startTime) : 0
+      console.error('[VMX] ========== Build Video Failed ==========')
+      console.error('[VMX] Error name:', err.name)
+      console.error('[VMX] Error message:', err.message)
+      console.error('[VMX] Error stack:', err.stack)
+      console.error('[VMX] Time elapsed:', (elapsed / 1000 / 60).toFixed(2), 'minutes')
+      console.error('[VMX] Error details:', {
+        name: err.name,
+        message: err.message,
+        cause: err.cause,
+        code: err.code
+      })
+      console.error('[VMX] =========================================')
+      
+      // Handle timeout errors specifically
+      if (err.name === 'AbortError' || err.message?.includes('timeout') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        console.error('[VMX] Detected timeout/network error')
+        setError('Request timeout - File terlalu besar atau proses memakan waktu lama. Proses masih berjalan di server, silakan tunggu atau coba lagi nanti. Timeout saat ini: 6 jam.')
+      } else if (err.message?.includes('fetch')) {
+        console.error('[VMX] Detected fetch error')
+        setError('Gagal terhubung ke server. Pastikan server masih berjalan dan koneksi internet stabil. Proses mungkin masih berjalan di server.')
+      } else {
+        console.error('[VMX] Other error')
+        setError(err.message || 'Terjadi kesalahan saat membangun video')
+      }
       setIsBuilding(false)
       setBuildProgress('')
     }
