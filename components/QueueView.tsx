@@ -26,6 +26,7 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>('')
+  const [cancellingIds, setCancellingIds] = useState<Set<string>>(new Set())
 
   const fetchQueue = async () => {
     try {
@@ -68,6 +69,8 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
         return '#dc3545'
       case 'pending':
         return '#ffc107'
+      case 'cancelled':
+        return '#6c757d'
       default:
         return '#6c757d'
     }
@@ -101,6 +104,41 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
     const filename = outputFile.split(/[/\\]/).pop() || 'output.mp4'
     // Try to open the file - user will need to navigate to the Downloads folder
     alert(`File tersimpan di: ${outputFile}\n\nSilakan buka folder Downloads/vmx_file untuk mengakses file.`)
+  }
+
+  const cancelQueueItem = async (queueId: string) => {
+    if (!confirm('Apakah Anda yakin ingin membatalkan queue ini?')) {
+      return
+    }
+
+    setCancellingIds(prev => new Set(prev).add(queueId))
+
+    try {
+      const response = await fetch(`${apiUrl}/api/queue/cancel?id=${queueId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to cancel queue')
+      }
+
+      // Refresh queue after cancellation
+      await fetchQueue()
+    } catch (err: any) {
+      console.error('[QUEUE] Error cancelling queue:', err)
+      setError(err.message || 'Failed to cancel queue')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setCancellingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(queueId)
+        return newSet
+      })
+    }
   }
 
   if (loading) {
@@ -301,7 +339,8 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
                   padding: '0.75rem',
                   background: '#d4edda',
                   borderRadius: '4px',
-                  fontSize: '0.875rem'
+                  fontSize: '0.875rem',
+                  marginBottom: '1rem'
                 }}>
                   <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
                     ✅ File selesai diproses:
@@ -329,6 +368,52 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
                   </button>
                 </div>
               )}
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end'
+              }}>
+                {(item.status === 'pending' || item.status === 'processing') && (
+                  <button
+                    onClick={() => cancelQueueItem(item.id)}
+                    disabled={cancellingIds.has(item.id)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: cancellingIds.has(item.id) ? '#6c757d' : '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: cancellingIds.has(item.id) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 'bold',
+                      opacity: cancellingIds.has(item.id) ? 0.6 : 1
+                    }}
+                  >
+                    {cancellingIds.has(item.id) ? '⏳ Membatalkan...' : '❌ Batalkan'}
+                  </button>
+                )}
+                {(item.status === 'completed' || item.status === 'failed' || item.status === 'cancelled') && (
+                  <button
+                    onClick={() => cancelQueueItem(item.id)}
+                    disabled={cancellingIds.has(item.id)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: cancellingIds.has(item.id) ? '#6c757d' : '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: cancellingIds.has(item.id) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 'bold',
+                      opacity: cancellingIds.has(item.id) ? 0.6 : 1
+                    }}
+                  >
+                    {cancellingIds.has(item.id) ? '⏳ Menghapus...' : '🗑️ Hapus'}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
