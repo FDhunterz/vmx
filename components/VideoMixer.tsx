@@ -40,6 +40,9 @@ export default function VideoMixer() {
   })
   const [encoder, setEncoder] = useState<string>('cpu')
   const [preset, setPreset] = useState<string>('medium')
+  const [enableFade, setEnableFade] = useState<boolean>(false)
+  const [fadeDuration, setFadeDuration] = useState<number>(1.0)
+  const [fadeOffset, setFadeOffset] = useState<number>(1.0)
   const [isBuilding, setIsBuilding] = useState(false)
   const [buildProgress, setBuildProgress] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -241,9 +244,9 @@ export default function VideoMixer() {
           formData.append('video', videoFile)
           console.log('[VMX] Total upload size (audio + video):', ((totalAudioSize + videoFile.size) / 1024 / 1024).toFixed(2), 'MB')
         }
-        url = `${apiUrl}/api/join/video-loop?encoder=${encoder}&preset=${preset}`
+        url = `${apiUrl}/api/join/video-loop?encoder=${encoder}&preset=${preset}&fade=${enableFade ? 'true' : 'false'}&fadeDuration=${fadeDuration}&fadeOffset=${fadeOffset}`
         console.log('[VMX] Step 4: Video-loop mode - URL:', url)
-        console.log('[VMX] Encoder:', encoder, 'Preset:', preset)
+        console.log('[VMX] Encoder:', encoder, 'Preset:', preset, 'Fade:', enableFade, 'FadeDuration:', fadeDuration, 'FadeOffset:', fadeOffset)
         setBuildProgress('Menggabungkan audio dengan video loop...')
       }
 
@@ -635,6 +638,7 @@ export default function VideoMixer() {
 
       {/* Video Upload (for video-loop mode) */}
       {mode === 'video-loop' && (
+        <>
         <div style={{
           padding: '1.5rem',
           border: '2px dashed #dee2e6',
@@ -695,6 +699,83 @@ export default function VideoMixer() {
             </button>
           )}
         </div>
+
+        {/* Fade Effect Selector (for video-loop mode) */}
+        <div style={{
+          padding: '1.5rem',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          background: '#f8f9fa'
+        }}>
+          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Efek Video Loop</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={enableFade}
+                onChange={(e) => setEnableFade(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer'
+                }}
+              />
+              <span style={{ fontSize: '1rem' }}>Aktifkan Efek Fade (xfade)</span>
+            </label>
+          </div>
+          {enableFade && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginTop: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  Fade Duration (detik)
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="5"
+                  step="0.1"
+                  value={fadeDuration}
+                  onChange={(e) => setFadeDuration(parseFloat(e.target.value) || 1.0)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px'
+                  }}
+                />
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+                  Durasi transisi fade (default: 1 detik)
+                </p>
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  Fade Offset (detik)
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  value={fadeOffset}
+                  onChange={(e) => setFadeOffset(parseFloat(e.target.value) || 1.0)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px'
+                  }}
+                />
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+                  Offset mulai fade dari akhir video (default: 1 detik)
+                </p>
+              </div>
+            </div>
+          )}
+          <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+            Efek fade menggunakan xfade untuk transisi halus yang menghubungkan akhir video dengan awal video untuk looping yang seamless.
+          </p>
+        </div>
+        </>
       )}
 
       {/* Audio Files Upload */}
