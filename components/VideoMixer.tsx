@@ -29,6 +29,17 @@ export default function VideoMixer() {
 
   const [apiUrl, setApiUrl] = useState<string>(() => getInitialApiUrl())
   const [showApiConfig, setShowApiConfig] = useState(false)
+  
+  // Get Output Directory from localStorage or use default
+  const getInitialOutputDir = () => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('vmx_output_directory')
+      if (saved) return saved
+    }
+    return '' // Empty means use backend default
+  }
+
+  const [outputDirectory, setOutputDirectory] = useState<string>(() => getInitialOutputDir())
   const [mode, setMode] = useState<'black-screen' | 'video-loop'>('black-screen')
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([])
   const [videoFile, setVideoFile] = useState<File | null>(null)
@@ -57,6 +68,14 @@ export default function VideoMixer() {
       localStorage.setItem('vmx_api_url', url)
       setApiUrl(url)
       checkApiHealth() // Re-check with new URL
+    }
+  }
+
+  // Save Output Directory to localStorage
+  const saveOutputDirectory = (dir: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vmx_output_directory', dir)
+      setOutputDirectory(dir)
     }
   }
 
@@ -469,6 +488,55 @@ export default function VideoMixer() {
           </div>
           <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
             Untuk deploy ke cloud, masukkan URL backend API Anda (contoh: https://api.example.com)
+          </p>
+          
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>Output Directory</h4>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={outputDirectory}
+              onChange={(e) => setOutputDirectory(e.target.value)}
+              placeholder="C:\\Users\\YourName\\Downloads\\vmx_file"
+              style={{
+                flex: 1,
+                padding: '0.5rem',
+                border: '1px solid #dee2e6',
+                borderRadius: '4px',
+                fontSize: '0.875rem'
+              }}
+            />
+            <button
+              onClick={() => saveOutputDirectory(outputDirectory)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Simpan
+            </button>
+            <button
+              onClick={() => {
+                setOutputDirectory('')
+                saveOutputDirectory('')
+              }}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Reset
+            </button>
+          </div>
+          <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#6c757d' }}>
+            Root directory untuk file output (contoh: C:\Users\FDhunterz\Downloads\vmx_file). Kosongkan untuk menggunakan default backend.
           </p>
         </div>
       )}

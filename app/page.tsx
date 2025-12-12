@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import VideoMixer from '@/components/VideoMixer'
 import QueueView from '@/components/QueueView'
+import ProgressTracker from '@/components/ProgressTracker'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'mixer' | 'queue'>('mixer')
+  const [activeTab, setActiveTab] = useState<'mixer' | 'queue' | 'progress'>('mixer')
   const [apiUrl, setApiUrl] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('vmx_api_url')
@@ -75,13 +76,31 @@ export default function Home() {
           >
             📋 Queue ({activeTab === 'queue' ? 'Live' : ''})
           </button>
+          <button
+            onClick={() => setActiveTab('progress')}
+            style={{
+              padding: '1rem 2rem',
+              background: activeTab === 'progress' ? '#007bff' : 'transparent',
+              color: activeTab === 'progress' ? 'white' : '#333',
+              border: 'none',
+              borderBottom: activeTab === 'progress' ? '3px solid #007bff' : '3px solid transparent',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              transition: 'all 0.3s'
+            }}
+          >
+            📂 Progress Tracker
+          </button>
         </div>
 
         {/* Content */}
         {activeTab === 'mixer' ? (
           <VideoMixer />
-        ) : (
+        ) : activeTab === 'queue' ? (
           <QueueView apiUrl={apiUrl} />
+        ) : (
+          <ProgressTracker apiUrl={apiUrl} />
         )}
       </div>
     </main>

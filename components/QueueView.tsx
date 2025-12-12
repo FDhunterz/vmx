@@ -27,6 +27,15 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>('')
   const [cancellingIds, setCancellingIds] = useState<Set<string>>(new Set())
+  
+  // Get Output Directory from localStorage
+  const getOutputDirectory = () => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('vmx_output_directory')
+      if (saved) return saved
+    }
+    return '' // Empty means use backend default
+  }
 
   const fetchQueue = async () => {
     try {
@@ -102,8 +111,17 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
   const downloadFile = (outputFile: string) => {
     // Extract filename from path
     const filename = outputFile.split(/[/\\]/).pop() || 'output.mp4'
-    // Try to open the file - user will need to navigate to the Downloads folder
-    alert(`File tersimpan di: ${outputFile}\n\nSilakan buka folder Downloads/vmx_file untuk mengakses file.`)
+    const outputDir = getOutputDirectory()
+    
+    // If output directory is set, show full path with custom directory
+    if (outputDir) {
+      // Construct full path using custom output directory
+      const fullPath = outputDir + (outputDir.endsWith('\\') || outputDir.endsWith('/') ? '' : '\\') + filename
+      alert(`File tersimpan di: ${fullPath}\n\nPath dari backend: ${outputFile}\n\nSilakan buka folder untuk mengakses file.`)
+    } else {
+      // Use backend path
+      alert(`File tersimpan di: ${outputFile}\n\nSilakan buka folder Downloads/vmx_file untuk mengakses file.`)
+    }
   }
 
   const cancelQueueItem = async (queueId: string) => {
@@ -350,8 +368,26 @@ export default function QueueView({ apiUrl }: QueueViewProps) {
                     color: '#155724',
                     marginBottom: '0.5rem'
                   }}>
-                    {item.outputFile}
+                    {(() => {
+                      const outputDir = getOutputDirectory()
+                      if (outputDir) {
+                        const filename = item.outputFile.split(/[/\\]/).pop() || 'output.mp4'
+                        const fullPath = outputDir + (outputDir.endsWith('\\') || outputDir.endsWith('/') ? '' : '\\') + filename
+                        return fullPath
+                      }
+                      return item.outputFile
+                    })()}
                   </div>
+                  {getOutputDirectory() && (
+                    <div style={{ 
+                      fontSize: '0.75rem',
+                      color: '#6c757d',
+                      marginBottom: '0.5rem',
+                      fontStyle: 'italic'
+                    }}>
+                      (Backend path: {item.outputFile})
+                    </div>
+                  )}
                   <button
                     onClick={() => downloadFile(item.outputFile)}
                     style={{
