@@ -860,9 +860,19 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
                       }}>
                         <span>Progress</span>
                         <span style={{ fontWeight: 'bold' }}>
-                          {file.progressTarget.totalFrames > 0 
-                            ? Math.round((file.progressData.frame / file.progressTarget.totalFrames) * 100)
-                            : 0}%
+                          {(() => {
+                            // Calculate percentage based on time (out_time_ms / total_duration)
+                            if (file.progressData.progress === 'end') {
+                              return 100
+                            }
+                            if (file.progressTarget.totalDuration > 0 && file.progressData.outTimeMs > 0) {
+                              // Convert outTimeMs from microseconds to seconds, then calculate percentage
+                              const currentTimeSeconds = file.progressData.outTimeMs / 1000000.0
+                              const percentage = Math.min((currentTimeSeconds / file.progressTarget.totalDuration) * 100, 100)
+                              return Math.round(percentage)
+                            }
+                            return 0
+                          })()}%
                         </span>
                       </div>
                       <div style={{
@@ -873,9 +883,18 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
                         overflow: 'hidden'
                       }}>
                         <div style={{
-                          width: `${file.progressTarget.totalFrames > 0 
-                            ? Math.min((file.progressData.frame / file.progressTarget.totalFrames) * 100, 100)
-                            : 0}%`,
+                          width: `${(() => {
+                            // Calculate percentage based on time
+                            if (file.progressData.progress === 'end') {
+                              return 100
+                            }
+                            if (file.progressTarget.totalDuration > 0 && file.progressData.outTimeMs > 0) {
+                              const currentTimeSeconds = file.progressData.outTimeMs / 1000000.0
+                              const percentage = Math.min((currentTimeSeconds / file.progressTarget.totalDuration) * 100, 100)
+                              return Math.max(0, Math.min(percentage, 100))
+                            }
+                            return 0
+                          })()}%`,
                           height: '100%',
                           background: file.progressData.progress === 'end' ? '#28a745' : '#007bff',
                           transition: 'width 0.3s ease',
@@ -886,9 +905,17 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
                           fontSize: '0.7rem',
                           fontWeight: 'bold'
                         }}>
-                          {file.progressTarget.totalFrames > 0 
-                            ? `${file.progressData.frame.toLocaleString()} / ${file.progressTarget.totalFrames.toLocaleString()} frames`
-                            : ''}
+                          {(() => {
+                            if (file.progressData.progress === 'end') {
+                              return '100% Complete'
+                            }
+                            if (file.progressTarget.totalDuration > 0 && file.progressData.outTimeMs > 0) {
+                              const currentTimeSeconds = file.progressData.outTimeMs / 1000000.0
+                              const percentage = Math.min((currentTimeSeconds / file.progressTarget.totalDuration) * 100, 100)
+                              return `${Math.round(percentage)}%`
+                            }
+                            return '0%'
+                          })()}
                         </div>
                       </div>
                     </div>
