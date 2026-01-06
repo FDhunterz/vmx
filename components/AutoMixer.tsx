@@ -8,9 +8,15 @@ interface FileSystemHandle {
   name: string
 }
 
+interface FileSystemWritableFileStream extends WritableStream {
+  write(data: string | Blob | ArrayBuffer | DataView): Promise<void>
+  close(): Promise<void>
+}
+
 interface FileSystemFileHandle extends FileSystemHandle {
   kind: 'file'
   getFile(): Promise<File>
+  createWritable(options?: { keepExistingData?: boolean }): Promise<FileSystemWritableFileStream>
 }
 
 interface FileSystemDirectoryHandle extends FileSystemHandle {
