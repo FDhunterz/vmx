@@ -4,11 +4,12 @@ import { useState } from 'react'
 import VideoMixer from '@/components/VideoMixer'
 import QueueView from '@/components/QueueView'
 import ProgressTracker from '@/components/ProgressTracker'
+import AutoMixer from '@/components/AutoMixer'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'mixer' | 'queue' | 'progress'>('mixer')
+  const [activeTab, setActiveTab] = useState<'mixer' | 'automixer' | 'queue' | 'progress'>('mixer')
   const [apiUrl, setApiUrl] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('vmx_api_url')
@@ -61,6 +62,22 @@ export default function Home() {
             🎬 Video Mixer
           </button>
           <button
+            onClick={() => setActiveTab('automixer')}
+            style={{
+              padding: '1rem 2rem',
+              background: activeTab === 'automixer' ? '#007bff' : 'transparent',
+              color: activeTab === 'automixer' ? 'white' : '#333',
+              border: 'none',
+              borderBottom: activeTab === 'automixer' ? '3px solid #007bff' : '3px solid transparent',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              transition: 'all 0.3s'
+            }}
+          >
+            🎵 Auto Mixer
+          </button>
+          <button
             onClick={() => setActiveTab('queue')}
             style={{
               padding: '1rem 2rem',
@@ -97,6 +114,8 @@ export default function Home() {
         {/* Content */}
         {activeTab === 'mixer' ? (
           <VideoMixer />
+        ) : activeTab === 'automixer' ? (
+          <AutoMixer />
         ) : activeTab === 'queue' ? (
           <QueueView apiUrl={apiUrl} />
         ) : (
