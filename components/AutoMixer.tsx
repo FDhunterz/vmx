@@ -36,6 +36,12 @@ interface AudioSource {
   alterFiles: File[]
 }
 
+interface PlaylistFile {
+  file: File
+  isMain: boolean
+  sourceName: string
+}
+
 interface MixHistory {
   playlist: string[] // Array of file names in order
   thumbnail?: string // Thumbnail file name used
@@ -48,7 +54,7 @@ export default function AutoMixer() {
   const [sourcesDirectory, setSourcesDirectory] = useState<FileSystemDirectoryHandle | null>(null)
   const [sourcesDirectoryName, setSourcesDirectoryName] = useState<string>('')
   const [audioSources, setAudioSources] = useState<AudioSource[]>([])
-  const [selectedPlaylist, setSelectedPlaylist] = useState<File[]>([])
+  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistFile[]>([])
   const [thumbnailFiles, setThumbnailFiles] = useState<File[]>([])
   const [selectedThumbnail, setSelectedThumbnail] = useState<File | null>(null)
   const [songCount, setSongCount] = useState<number>(10)
@@ -486,11 +492,16 @@ export default function AutoMixer() {
     }
   }
 
-  // Check if playlist exists in history
+  // Check if playlist exists in history (with backward compatibility)
   const playlistExistsInHistory = (playlist: string[], history: MixHistory[]): boolean => {
+    // Normalize current playlist
+    const normalizedPlaylist = normalizePlaylistForComparison(playlist)
+    
     return history.some(h => {
-      if (h.playlist.length !== playlist.length) return false
-      return h.playlist.every((name, index) => name === playlist[index])
+      if (h.playlist.length !== normalizedPlaylist.length) return false
+      // Normalize history playlist for comparison
+      const normalizedHistoryPlaylist = normalizePlaylistForComparison(h.playlist)
+      return normalizedHistoryPlaylist.every((name, index) => name === normalizedPlaylist[index])
     })
   }
 
@@ -523,10 +534,44 @@ export default function AutoMixer() {
     return filename.replace(/\.[^/.]+$/, '').toLowerCase()
   }
 
+  // Helper function to normalize filename for comparison (backward compatibility)
+  // Files without __main or __alter are treated as __main
+  const normalizeFilenameForComparison = (filename: string): string => {
+    // Check if filename already has identifier
+    if (filename.includes('__main') || filename.includes('__alter')) {
+      return filename
+    }
+    // If no identifier, treat as main (backward compatibility)
+    const lastDotIndex = filename.lastIndexOf('.')
+    if (lastDotIndex === -1) {
+      return `${filename}__main`
+    }
+    const nameWithoutExt = filename.substring(0, lastDotIndex)
+    const extension = filename.substring(lastDotIndex)
+    return `${nameWithoutExt}__main${extension}`
+  }
+
+  // Helper function to normalize playlist for comparison
+  const normalizePlaylistForComparison = (playlist: string[]): string[] => {
+    return playlist.map(normalizeFilenameForComparison)
+  }
+
+  // Helper function to add identifier to filename
+  const addIdentifierToFilename = (filename: string, isMain: boolean): string => {
+    const lastDotIndex = filename.lastIndexOf('.')
+    if (lastDotIndex === -1) {
+      // No extension
+      return `${filename}__${isMain ? 'main' : 'alter'}`
+    }
+    const nameWithoutExt = filename.substring(0, lastDotIndex)
+    const extension = filename.substring(lastDotIndex)
+    return `${nameWithoutExt}__${isMain ? 'main' : 'alter'}${extension}`
+  }
+
   // Generate random playlist from sources with specified count
   // Ensures no duplicate titles between main and alter in the same playlist
-  const generateRandomPlaylist = (sources: AudioSource[], count: number): File[] => {
-    const playlist: File[] = []
+  const generateRandomPlaylist = (sources: AudioSource[], count: number): PlaylistFile[] => {
+    const playlist: PlaylistFile[] = []
     const usedTitles = new Set<string>() // Track titles already used
     
     // Collect all available files with their source info
@@ -569,7 +614,11 @@ export default function AutoMixer() {
       
       // Check if this title is already used
       if (!usedTitles.has(fileInfo.title)) {
-        playlist.push(fileInfo.file)
+        playlist.push({
+          file: fileInfo.file,
+          isMain: fileInfo.isMain,
+          sourceName: fileInfo.source
+        })
         usedTitles.add(fileInfo.title)
       }
     }
@@ -581,9 +630,13 @@ export default function AutoMixer() {
         if (playlist.length >= count) break
         
         // Skip if already in playlist or title already used
-        const alreadyInPlaylist = playlist.some(f => f.name === fileInfo.file.name)
+        const alreadyInPlaylist = playlist.some(pf => pf.file.name === fileInfo.file.name && pf.isMain === fileInfo.isMain)
         if (!alreadyInPlaylist && !usedTitles.has(fileInfo.title)) {
-          playlist.push(fileInfo.file)
+          playlist.push({
+            file: fileInfo.file,
+            isMain: fileInfo.isMain,
+            sourceName: fileInfo.source
+          })
           usedTitles.add(fileInfo.title)
         }
       }
@@ -638,14 +691,14 @@ export default function AutoMixer() {
       }
 
       // Try to generate unique playlist (max 10 attempts)
-      let playlist: File[] = []
+      let playlist: PlaylistFile[] = []
       let playlistNames: string[] = []
       let attempts = 0
       const maxAttempts = 10
 
       while (attempts < maxAttempts) {
         playlist = generateRandomPlaylist(audioSources, songCount)
-        playlistNames = playlist.map(f => f.name)
+        playlistNames = playlist.map(pf => addIdentifierToFilename(pf.file.name, pf.isMain))
 
         // Ensure we have the requested count
         if (playlist.length < songCount) {
@@ -699,6 +752,7 @@ export default function AutoMixer() {
 
       // Set selected playlist (don't save to history yet)
       setSelectedPlaylist(playlist)
+      const playlistDisplayNames = playlist.map(pf => addIdentifierToFilename(pf.file.name, pf.isMain)).join(', ')
       setInfo(`Playlist berhasil dibuat dengan ${playlist.length} file audio. Video thumbnail loop yang akan digunakan: ${unusedThumbnail.name}`)
 
     } catch (err: any) {
@@ -737,8 +791,8 @@ export default function AutoMixer() {
       setMixProgress('Menyiapkan file untuk build...')
 
       const formData = new FormData()
-      selectedPlaylist.forEach((file, index) => {
-        formData.append(`audio${index + 1}`, file)
+      selectedPlaylist.forEach((playlistFile, index) => {
+        formData.append(`audio${index + 1}`, playlistFile.file)
       })
 
       // Add video thumbnail loop as background
@@ -769,7 +823,7 @@ export default function AutoMixer() {
       const currentHistory = await readMixHistory()
       
       // Create history entry with playlist and thumbnail
-      const playlistNames = selectedPlaylist.map(f => f.name)
+      const playlistNames = selectedPlaylist.map(pf => addIdentifierToFilename(pf.file.name, pf.isMain))
       const historyEntry: MixHistory = {
         playlist: playlistNames,
         thumbnail: selectedThumbnail.name,
@@ -1164,20 +1218,31 @@ export default function AutoMixer() {
         }}>
           <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Playlist yang Dipilih</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-            {selectedPlaylist.map((file, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: '0.75rem',
-                  background: 'white',
-                  borderRadius: '4px',
-                  border: '1px solid #dee2e6'
-                }}
-              >
-                <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>#{index + 1}</span>
-                <span>🎵 {file.name}</span>
-              </div>
-            ))}
+            {selectedPlaylist.map((playlistFile, index) => {
+              const displayName = addIdentifierToFilename(playlistFile.file.name, playlistFile.isMain)
+              return (
+                <div
+                  key={index}
+                  style={{
+                    padding: '0.75rem',
+                    background: 'white',
+                    borderRadius: '4px',
+                    border: '1px solid #dee2e6'
+                  }}
+                >
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>#{index + 1}</span>
+                  <span>🎵 {displayName}</span>
+                  <span style={{ 
+                    marginLeft: '0.5rem', 
+                    fontSize: '0.75rem', 
+                    color: playlistFile.isMain ? '#28a745' : '#17a2b8',
+                    fontWeight: 'bold'
+                  }}>
+                    ({playlistFile.isMain ? 'MAIN' : 'ALTER'})
+                  </span>
+                </div>
+              )
+            })}
           </div>
           <button
             onClick={buildVideoWithPlaylist}
