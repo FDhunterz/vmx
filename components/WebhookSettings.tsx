@@ -84,9 +84,9 @@ export default function WebhookSettings() {
     if (!selectedProfile) return
     const prevEnabled = selectedProfile.enabled
     const prevTriggers = selectedProfile.triggerOn
-    const next = profiles.map((item) =>
+    const next: WebhookProfile[] = profiles.map((item) =>
       item.id === selectedProfile.id
-        ? { ...item, enabled: true, triggerOn: ['build_started'] }
+        ? { ...item, enabled: true, triggerOn: ['build_started'] as WebhookProfile['triggerOn'] }
         : item
     )
 
@@ -99,7 +99,7 @@ export default function WebhookSettings() {
       note: `manual test dari trigger ${selectedProfile.name}`
     })
 
-    const restored = next.map((item) =>
+    const restored: WebhookProfile[] = next.map((item) =>
       item.id === selectedProfile.id
         ? { ...item, enabled: prevEnabled, triggerOn: prevTriggers }
         : item
@@ -147,13 +147,15 @@ export default function WebhookSettings() {
                     setShowDetail(false)
                     const active = p.enabled
                     const triggerOn = p.triggerOn
-                    const next = profiles.map((item) =>
-                      item.id === p.id ? { ...item, enabled: true, triggerOn: ['build_started'] } : item
+                    const next: WebhookProfile[] = profiles.map((item) =>
+                      item.id === p.id
+                        ? { ...item, enabled: true, triggerOn: ['build_started'] as WebhookProfile['triggerOn'] }
+                        : item
                     )
                     setProfiles(next)
                     saveWebhookProfiles(next)
                     await triggerWebhook('build_started', { module: 'webhook_settings', test: true, note: `quick test ${p.name}` })
-                    const restored = next.map((item) =>
+                    const restored: WebhookProfile[] = next.map((item) =>
                       item.id === p.id ? { ...item, enabled: active, triggerOn } : item
                     )
                     setProfiles(restored)
