@@ -604,89 +604,115 @@ export default function TemplateMixer() {
 
   // ── Render ──
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <h2 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
-        🎞️ Template Mixer
-      </h2>
-      <p style={{ margin: 0, fontSize: '0.9rem', color: '#555', lineHeight: 1.6 }}>
-        Gabungkan file MP3 dengan template video MP4 (background hitam + animasi bergerak).
-        Template akan di-loop dari frame 0 sampai durasi seluruh musik habis.
-      </p>
+  const canShowControls = audioSources.length > 0
+  const canGenerate = audioSources.length > 0 && templateVideo && backgroundImages.length > 0
 
-      {/* ── 1. Folder Sources ── */}
-      <div style={{
-        padding: '1.5rem',
-        border: '1px solid #dee2e6',
-        borderRadius: '8px',
-        background: '#f8f9fa'
-      }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>📁 Folder Sources (MP3)</h3>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-          {sourcesDirectoryName ? (
-            <div style={{
-              padding: '0.75rem',
-              background: 'white',
-              borderRadius: '4px',
-              flex: 1,
-              border: '1px solid #dee2e6'
-            }}>
-              📁 {sourcesDirectoryName}
-            </div>
-          ) : (
-            <div style={{
-              padding: '0.75rem',
-              background: '#fff3cd',
-              borderRadius: '4px',
-              flex: 1,
-              border: '1px solid #ffeaa7',
-              color: '#856404'
-            }}>
-              Belum ada folder yang dipilih
-            </div>
-          )}
-          <button
-            onClick={openSourcesPicker}
-            disabled={loading}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: loading ? '#6c757d' : '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {loading ? '⏳ Memindai...' : '📁 Pilih Folder Sources'}
-          </button>
+  const pageStyle = {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1rem'
+  }
+
+  const panelStyle = {
+    padding: '1.1rem',
+    borderRadius: '16px',
+    background: '#f6f7fb',
+    boxShadow: '0 14px 30px rgba(15, 23, 42, 0.1), 0 3px 8px rgba(15, 23, 42, 0.06)'
+  }
+
+  const subPanelStyle = {
+    padding: '0.72rem 0.85rem',
+    borderRadius: '12px',
+    background: '#f6f7fb',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), 0 6px 14px rgba(15, 23, 42, 0.06)'
+  }
+
+  const contentCardStyle = {
+    padding: '0.85rem 0.95rem',
+    borderRadius: '12px',
+    background: '#ffffff',
+    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.05)'
+  }
+
+  const inputStyle = {
+    width: '100%',
+    padding: '0.64rem 0.76rem',
+    borderRadius: '10px',
+    border: '1px solid #dbe3ef',
+    background: '#ffffff',
+    color: '#0f172a',
+    outline: 'none',
+    fontSize: '0.92rem'
+  }
+
+  const primaryButton = (disabled = false) => ({
+    padding: '0.66rem 0.95rem',
+    borderRadius: '10px',
+    border: disabled ? '1px solid #e2e8f0' : '1px solid #0f172a',
+    background: disabled ? '#f1f5f9' : '#0f172a',
+    color: disabled ? '#94a3b8' : '#ffffff',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontWeight: 600,
+    fontSize: '0.88rem',
+    transition: 'all 150ms ease'
+  })
+
+  const ghostButton = {
+    padding: '0.62rem 0.82rem',
+    borderRadius: '10px',
+    border: '1px solid #dbe3ef',
+    background: '#ffffff',
+    color: '#334155',
+    cursor: 'pointer',
+    fontWeight: 500,
+    fontSize: '0.84rem'
+  }
+
+  const mutedText = { margin: 0, fontSize: '0.82rem', color: '#64748b', lineHeight: 1.55 }
+
+  return (
+    <div style={pageStyle}>
+      <div style={{ ...panelStyle, padding: '1.3rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 700 }}>Template Mixer</h2>
+            <p style={{ ...mutedText, marginTop: '0.45rem' }}>
+              Gabungkan file MP3 dengan satu template video dan background image unik secara otomatis.
+            </p>
+          </div>
+          <div style={{ ...subPanelStyle, fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+            API: <span style={{ color: '#0f172a', fontWeight: 600 }}>{apiUrl}</span>
+          </div>
         </div>
-        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6c757d' }}>
-          Struktur: folder berisi subfolder <strong>main</strong> (wajib) dan <strong>alter</strong> (opsional) dengan file MP3.
+      </div>
+
+      <div style={panelStyle}>
+        <h3 style={{ marginTop: 0, marginBottom: '0.8rem', color: '#0f172a' }}>Folder Sources (MP3)</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.65rem', alignItems: 'stretch' }}>
+          <div style={{ ...contentCardStyle, display: 'flex', alignItems: 'center' }}>
+            <span style={{ color: sourcesDirectoryName ? '#0f172a' : '#64748b' }}>
+              {sourcesDirectoryName ? `📁 ${sourcesDirectoryName}` : 'Belum ada folder yang dipilih'}
+            </span>
+          </div>
+          <div style={{ ...contentCardStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={openSourcesPicker} disabled={loading} style={primaryButton(loading)}>
+              {loading ? 'Memindai...' : 'Pilih Folder Sources'}
+            </button>
+          </div>
+        </div>
+        <p style={{ ...mutedText, marginTop: '0.75rem' }}>
+          Struktur: folder berisi subfolder <strong>main</strong> (wajib) dan <strong>alter</strong> (opsional).
         </p>
       </div>
 
-      {/* ── Audio Sources Info ── */}
       {audioSources.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>🎵 Sumber Audio Ditemukan</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={panelStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.85rem', color: '#0f172a' }}>Sumber Audio Ditemukan</h3>
+          <div style={{ display: 'grid', gap: '0.55rem' }}>
             {audioSources.map((src, i) => (
-              <div key={i} style={{
-                padding: '0.75rem',
-                background: 'white',
-                borderRadius: '4px',
-                border: '1px solid #dee2e6'
-              }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>📁 {src.name}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6c757d' }}>
+              <div key={i} style={contentCardStyle}>
+                <div style={{ color: '#0f172a', fontWeight: 600, marginBottom: '0.2rem' }}>📁 {src.name}</div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
                   Main: {src.mainFiles.length} file | Alter: {src.alterFiles.length} file
                 </div>
               </div>
@@ -695,97 +721,43 @@ export default function TemplateMixer() {
         </div>
       )}
 
-      {/* ── 2. Folder Background Image ── */}
-      <div style={{
-        padding: '1.5rem',
-        border: '1px solid #20c997',
-        borderRadius: '8px',
-        background: '#f3fffb'
-      }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#198754' }}>🖼️ Folder Background Image</h3>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-          {backgroundDirectoryName ? (
-            <div style={{
-              padding: '0.75rem',
-              background: 'white',
-              borderRadius: '4px',
-              flex: 1,
-              border: '1px solid #b9f1dd'
-            }}>
-              🖼️ {backgroundDirectoryName}
-            </div>
-          ) : (
-            <div style={{
-              padding: '0.75rem',
-              background: '#fff3cd',
-              borderRadius: '4px',
-              flex: 1,
-              border: '1px solid #ffeaa7',
-              color: '#856404'
-            }}>
-              Belum ada folder background yang dipilih
-            </div>
-          )}
-          <button
-            onClick={openBackgroundDirectoryPicker}
-            disabled={loadingBackground}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: loadingBackground ? '#6c757d' : '#20c997',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loadingBackground ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {loadingBackground ? '⏳ Memindai...' : '🖼️ Pilih Folder BG'}
-          </button>
+      <div style={panelStyle}>
+        <h3 style={{ marginTop: 0, marginBottom: '0.85rem', color: '#0f172a' }}>Folder Background Image</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.7rem', alignItems: 'stretch' }}>
+          <div style={{ ...contentCardStyle, display: 'flex', alignItems: 'center' }}>
+            <span style={{ color: backgroundDirectoryName ? '#0f172a' : '#64748b' }}>
+              {backgroundDirectoryName ? `🖼️ ${backgroundDirectoryName}` : 'Belum ada folder background yang dipilih'}
+            </span>
+          </div>
+          <div style={{ ...contentCardStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={openBackgroundDirectoryPicker} disabled={loadingBackground} style={primaryButton(loadingBackground)}>
+              {loadingBackground ? 'Memindai...' : 'Pilih Folder BG'}
+            </button>
+          </div>
         </div>
-        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6c757d' }}>
-          Format: PNG, JPG/JPEG, WEBP, BMP, GIF, AVIF. Sistem akan memilih image BG yang belum pernah digunakan.
+        <p style={{ ...mutedText, marginTop: '0.75rem' }}>
+          Format: PNG, JPG/JPEG, WEBP, BMP, GIF, AVIF. Sistem akan memilih image yang belum dipakai.
         </p>
       </div>
 
       {backgroundImages.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>🖼️ Background Image Tersedia</h3>
-          <div style={{ fontSize: '0.875rem', color: '#6c757d', marginBottom: '0.5rem' }}>
-            Total: {backgroundImages.length} image
+        <div style={panelStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#0f172a' }}>Background Tersedia</h3>
+          <div style={contentCardStyle}>
+            <p style={mutedText}>Total: {backgroundImages.length} image</p>
           </div>
           {selectedBackgroundImage && (
-            <div style={{
-              padding: '0.75rem',
-              background: '#d4edda',
-              border: '1px solid #c3e6cb',
-              borderRadius: '4px',
-              color: '#155724',
-              fontWeight: 'bold'
-            }}>
+          <div style={{ ...contentCardStyle, marginTop: '0.65rem', color: '#166534', background: '#f0fdf4', boxShadow: '0 8px 16px rgba(34, 197, 94, 0.15)' }}>
               ✅ Background terpilih: {selectedBackgroundImage.name}
             </div>
           )}
         </div>
       )}
 
-      {/* ── 2. Satu file template video ── */}
-      <div style={{
-        padding: '1.5rem',
-        border: '1px solid #6f42c1',
-        borderRadius: '8px',
-        background: '#f8f5ff'
-      }}>
-        <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#6f42c1' }}>🎞️ Template Video (1 file)</h3>
-        <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6c757d' }}>
-          Unggah satu file template MP4 (background hitam + animasi bergerak).
-          Untuk mengganti template, klik &quot;Ganti template&quot; lalu pilih file lain.
+      <div style={panelStyle}>
+        <h3 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#0f172a' }}>Template Video (1 file)</h3>
+        <p style={{ ...mutedText, marginBottom: '0.85rem' }}>
+          Unggah satu file video template. Saat diganti, playlist tidak berubah.
         </p>
         <input
           ref={templateInputRef}
@@ -795,38 +767,12 @@ export default function TemplateMixer() {
           style={{ display: 'none' }}
         />
         {templateVideo ? (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: '1rem',
-            padding: '0.75rem',
-            background: 'white',
-            borderRadius: '4px',
-            border: '1px solid #d5c8f0'
-          }}>
-            <span style={{ flex: 1, minWidth: '200px', fontWeight: 'bold', color: '#333' }}>
-              📹 {templateVideo.name}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: '#6c757d' }}>
-              {(templateVideo.size / 1024 / 1024).toFixed(2)} MB
-            </span>
-            <button
-              type="button"
-              onClick={replaceTemplate}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#6f42c1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                fontWeight: 'bold'
-              }}
-            >
-              Ganti template
-            </button>
+          <div style={{ ...contentCardStyle, display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <div style={{ color: '#0f172a', fontWeight: 600, marginBottom: '0.2rem' }}>📹 {templateVideo.name}</div>
+              <div style={{ fontSize: '0.82rem', color: '#64748b' }}>{(templateVideo.size / 1024 / 1024).toFixed(2)} MB</div>
+            </div>
+            <button type="button" onClick={replaceTemplate} style={ghostButton}>Ganti template</button>
             <button
               type="button"
               onClick={() => {
@@ -834,82 +780,35 @@ export default function TemplateMixer() {
                 setInfo('')
                 if (templateInputRef.current) templateInputRef.current.value = ''
               }}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#dc3545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.9rem'
-              }}
+              style={{ ...ghostButton, border: '1px solid #fecaca', color: '#dc2626', background: '#fff1f2' }}
             >
               Hapus
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => templateInputRef.current?.click()}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: '#6f42c1',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            🎞️ Pilih file template video
+          <button type="button" onClick={() => templateInputRef.current?.click()} style={primaryButton(false)}>
+            Pilih file template video
           </button>
         )}
       </div>
 
-      {/* ── 3. Jumlah Lagu ── */}
-      {audioSources.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>🔢 Jumlah Lagu</h3>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-            <label style={{ fontWeight: 'bold', minWidth: '150px' }}>Jumlah Lagu:</label>
+      {canShowControls && (
+        <div style={{ ...panelStyle, display: 'grid', gap: '0.9rem' }}>
+          <h3 style={{ margin: 0, color: '#0f172a' }}>Pengaturan Mix</h3>
+          <div style={{ ...contentCardStyle, display: 'grid', gridTemplateColumns: '180px 1fr', gap: '0.65rem', alignItems: 'center' }}>
+            <label style={{ color: '#475569', fontWeight: 500 }}>Jumlah Lagu</label>
             <input
               type="number"
               min="1"
               value={songCount}
               onChange={(e) => setSongCount(Math.max(1, parseInt(e.target.value) || 1))}
-              style={{
-                padding: '0.5rem',
-                border: '1px solid #dee2e6',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                width: '100px'
-              }}
+              style={{ ...inputStyle, maxWidth: '120px' }}
             />
           </div>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#6c757d' }}>
-            Jumlah lagu yang akan digabungkan. Tidak ada duplikasi judul antara main/alter dalam satu playlist.
-          </p>
-        </div>
-      )}
 
-      {/* ── 4. Encoder & Preset ── */}
-      {audioSources.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>⚙️ Encoder & Preset</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+          <div style={{ ...contentCardStyle, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.7rem' }}>
             <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Encoder</label>
+              <label style={{ display: 'block', marginBottom: '0.45rem', color: '#475569' }}>Encoder</label>
               <select
                 value={encoder}
                 onChange={(e) => {
@@ -919,23 +818,19 @@ export default function TemplateMixer() {
                   }
                   setPreset(defaults[e.target.value] || 'medium')
                 }}
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '1rem' }}
+                style={inputStyle}
               >
                 <option value="cpu">CPU (libx264)</option>
                 <option value="nvenc">NVIDIA GPU (NVENC)</option>
                 <option value="qsv">Intel GPU (Quick Sync)</option>
                 <option value="amf">AMD GPU (AMF)</option>
                 <option value="vaapi">VAAPI (Linux)</option>
-                <option value="videotoolbox">Apple GPU (VideoToolbox - M1/M2/M3/M4)</option>
+                <option value="videotoolbox">Apple GPU (VideoToolbox)</option>
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Preset</label>
-              <select
-                value={preset}
-                onChange={(e) => setPreset(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '1rem' }}
-              >
+              <label style={{ display: 'block', marginBottom: '0.45rem', color: '#475569' }}>Preset</label>
+              <select value={preset} onChange={(e) => setPreset(e.target.value)} style={inputStyle}>
                 {encoder === 'cpu' && (
                   <>
                     <option value="ultrafast">Ultrafast (Tercepat)</option>
@@ -996,125 +891,54 @@ export default function TemplateMixer() {
               </select>
             </div>
           </div>
-          <p style={{ margin: '0.75rem 0 0 0', fontSize: '0.8rem', color: '#6c757d' }}>
-            GPU encoder lebih cepat tapi memerlukan hardware yang sesuai. Preset lebih cepat = kualitas lebih rendah.
-          </p>
+          <p style={mutedText}>GPU encoder lebih cepat, tetapi perlu hardware yang sesuai.</p>
         </div>
       )}
 
-      {/* ── 5. Generate & Build ── */}
-      {audioSources.length > 0 && templateVideo && backgroundImages.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>🎲 Generate & Build</h3>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={performAutoMix}
-              disabled={isMixing || songCount <= 0}
-              style={{
-                padding: '1rem 2rem',
-                background: isMixing || songCount <= 0 ? '#6c757d' : '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: isMixing || songCount <= 0 ? 'not-allowed' : 'pointer',
-                fontSize: '1rem',
-                fontWeight: 'bold'
-              }}
-            >
-              {isMixing ? '⏳ Memproses...' : '🎲 Generate Playlist'}
+      {canGenerate && (
+        <div style={panelStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#0f172a' }}>Generate Playlist</h3>
+          <div style={{ ...contentCardStyle, display: 'inline-flex' }}>
+            <button onClick={performAutoMix} disabled={isMixing || songCount <= 0} style={primaryButton(isMixing || songCount <= 0)}>
+              {isMixing ? 'Memproses...' : 'Generate Playlist'}
             </button>
           </div>
           {mixProgress && (
-            <div style={{
-              marginTop: '1rem',
-              padding: '0.75rem',
-              background: '#d1ecf1',
-              color: '#0c5460',
-              borderRadius: '4px',
-              fontSize: '0.875rem'
-            }}>
+            <div style={{ ...contentCardStyle, marginTop: '0.75rem', color: '#0c4a6e', background: '#f0f9ff', boxShadow: '0 8px 16px rgba(56, 189, 248, 0.15)' }}>
               {mixProgress}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Selected Playlist ── */}
       {selectedPlaylist.length > 0 && (
-        <div style={{
-          padding: '1.5rem',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          background: '#f8f9fa'
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>📋 Playlist yang Dipilih</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', maxHeight: '300px', overflowY: 'auto' }}>
+        <div style={panelStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#0f172a' }}>Playlist Terpilih</h3>
+          <div style={{ display: 'grid', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto', marginBottom: '0.8rem' }}>
             {selectedPlaylist.map((pf, i) => (
-              <div key={i} style={{
-                padding: '0.75rem',
-                background: 'white',
-                borderRadius: '4px',
-                border: '1px solid #dee2e6'
-              }}>
-                <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>#{i + 1}</span>
-                <span>🎵 {addIdentifier(pf.file.name, pf.isMain)}</span>
-                <span style={{
-                  marginLeft: '0.5rem',
-                  fontSize: '0.75rem',
-                  color: pf.isMain ? '#28a745' : '#17a2b8',
-                  fontWeight: 'bold'
-                }}>
-                  ({pf.isMain ? 'MAIN' : 'ALTER'})
+              <div key={i} style={{ ...contentCardStyle, display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ color: '#0f172a', fontWeight: 600 }}>#{i + 1}</span>
+                <span style={{ color: '#1e293b', flex: 1 }}>🎵 {addIdentifier(pf.file.name, pf.isMain)}</span>
+                <span style={{ fontSize: '0.74rem', color: pf.isMain ? '#16a34a' : '#0369a1', fontWeight: 700 }}>
+                  {pf.isMain ? 'MAIN' : 'ALTER'}
                 </span>
               </div>
             ))}
           </div>
-          <button
-            onClick={buildVideo}
-            disabled={isMixing}
-            style={{
-              padding: '1rem 2rem',
-              background: isMixing ? '#6c757d' : '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: isMixing ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            {isMixing ? '⏳ Membangun Video...' : '🎬 Build Video dengan Template'}
+          <button onClick={buildVideo} disabled={isMixing} style={primaryButton(isMixing)}>
+            {isMixing ? 'Membangun Video...' : 'Build Video dengan Template'}
           </button>
         </div>
       )}
 
-      {/* ── Error ── */}
       {error && (
-        <div style={{
-          padding: '1rem',
-          background: '#f8d7da',
-          color: '#721c24',
-          border: '1px solid #f5c6cb',
-          borderRadius: '8px'
-        }}>
+        <div style={{ ...panelStyle, color: '#b91c1c', background: '#fff1f2', boxShadow: '0 10px 20px rgba(239, 68, 68, 0.12)' }}>
           ⚠️ {error}
         </div>
       )}
 
-      {/* ── Info ── */}
       {info && (
-        <div style={{
-          padding: '1rem',
-          background: '#d4edda',
-          color: '#155724',
-          border: '1px solid #c3e6cb',
-          borderRadius: '8px'
-        }}>
+        <div style={{ ...panelStyle, color: '#166534', background: '#f0fdf4', boxShadow: '0 10px 20px rgba(34, 197, 94, 0.12)' }}>
           ℹ️ {info}
         </div>
       )}
