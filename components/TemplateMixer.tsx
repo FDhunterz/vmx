@@ -59,6 +59,7 @@ export default function TemplateMixer() {
   const [backgroundDirectory, setBackgroundDirectory] = useState<FileSystemDirectoryHandle | null>(null)
   const [backgroundDirectoryName, setBackgroundDirectoryName] = useState<string>('')
   const [backgroundImages, setBackgroundImages] = useState<File[]>([])
+  const [availableBackgroundCount, setAvailableBackgroundCount] = useState<number>(0)
   const [selectedBackgroundImage, setSelectedBackgroundImage] = useState<File | null>(null)
 
   const [songCount, setSongCount] = useState<number>(10)
@@ -420,6 +421,22 @@ export default function TemplateMixer() {
     return null
   }
 
+  const countAvailableBackgrounds = (images: File[], history: MixHistory[]): number => {
+    if (images.length === 0) return 0
+    const used = getUsedBackgrounds(history)
+    return images.filter(img => !used.has(img.name)).length
+  }
+
+  const refreshAvailableBackgroundCount = async (imagesOverride?: File[]) => {
+    const targetImages = imagesOverride ?? backgroundImages
+    if (targetImages.length === 0) {
+      setAvailableBackgroundCount(0)
+      return
+    }
+    const history = await readMixHistory()
+    setAvailableBackgroundCount(countAvailableBackgrounds(targetImages, history))
+  }
+
   const generateRandomPlaylist = (sources: AudioSource[], count: number): PlaylistFile[] => {
     const usedTitles = new Set<string>()
     const all: Array<{ file: File; source: string; isMain: boolean; title: string }> = []
@@ -487,6 +504,7 @@ export default function TemplateMixer() {
       setMixProgress('Membaca history...')
 
       const history = await readMixHistory()
+      setAvailableBackgroundCount(countAvailableBackgrounds(backgroundImages, history))
       setMixProgress(history.length === 0
         ? 'Tidak ada history, membuat baru...'
         : `History: ${history.length} playlist. Mencari playlist unik...`)
@@ -556,6 +574,15 @@ export default function TemplateMixer() {
       setIsMixing(true)
       setError('')
       setInfo('')
+      setMixProgress('Memeriksa background image...')
+
+      const historyBeforeBuild = await readMixHistory()
+      const usedBackgrounds = getUsedBackgrounds(historyBeforeBuild)
+      if (usedBackgrounds.has(selectedBackgroundImage.name)) {
+        setAvailableBackgroundCount(countAvailableBackgrounds(backgroundImages, historyBeforeBuild))
+        throw new Error(`Background "${selectedBackgroundImage.name}" sudah pernah dipakai. Silakan generate playlist lagi agar memilih background lain.`)
+      }
+
       setMixProgress('Memeriksa API server...')
 
       const health = await fetch(`${apiUrl}/`)
@@ -588,6 +615,7 @@ export default function TemplateMixer() {
         timestamp: new Date().toISOString()
       })
       await writeMixHistory(currentHistory)
+      setAvailableBackgroundCount(countAvailableBackgrounds(backgroundImages, currentHistory))
 
       if (data.success && data.queueId) {
         setInfo(`Video build dimulai. Template: ${templateVideo.name}, BG: ${selectedBackgroundImage.name}. Queue ID: ${data.queueId}`)
@@ -606,6 +634,10 @@ export default function TemplateMixer() {
 
   const canShowControls = audioSources.length > 0
   const canGenerate = audioSources.length > 0 && templateVideo && backgroundImages.length > 0
+
+  useEffect(() => {
+    refreshAvailableBackgroundCount()
+  }, [backgroundImages, sourcesDirectory, sourcesDirectoryName])
 
   const pageStyle = {
     display: 'flex',
@@ -744,7 +776,7 @@ export default function TemplateMixer() {
         <div style={panelStyle}>
           <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#0f172a' }}>Background Tersedia</h3>
           <div style={contentCardStyle}>
-            <p style={mutedText}>Total: {backgroundImages.length} image</p>
+            <p style={mutedText}>Total available: {availableBackgroundCount} image</p>
           </div>
           {selectedBackgroundImage && (
           <div style={{ ...contentCardStyle, marginTop: '0.65rem', color: '#166534', background: '#f0fdf4', boxShadow: '0 8px 16px rgba(34, 197, 94, 0.15)' }}>
