@@ -65,6 +65,16 @@ interface ProgressTrackerProps {
   apiUrl: string
 }
 
+interface DirectoryScanResult {
+  totalVideoFiles: number
+  totalProgressFiles: number
+  completedVideoFiles: number
+  completedFileNames: string[]
+}
+
+const POLLING_INTERVAL_MS = 10_000
+const DISCORD_WEBHOOK_STORAGE_KEY = 'vmx_discord_webhook_url'
+
 export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
   const [files, setFiles] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -72,7 +82,12 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [directoryPath, setDirectoryPath] = useState<string>('')
   const [isRestoring, setIsRestoring] = useState(true)
+  const [isPolling, setIsPolling] = useState(false)
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState<string | null>(null)
   const directoryInputRef = useRef<HTMLInputElement>(null)
+  const pollTimeoutRef = useRef<number | null>(null)
+  const isPollingLoopActiveRef = useRef(false)
+  const hasSentDiscordWebhookRef = useRef(false)
 
   // Check if File System Access API is supported
   const isFileSystemAccessSupported = () => {
@@ -227,7 +242,10 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
       await saveDirectoryHandle(handle)
 
       // Read files from directory
+      hasSentDiscordWebhookRef.current = false
       await readDirectoryFiles(handle)
+      isPollingLoopActiveRef.current = false
+      startPolling()
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('[PROGRESS] Error opening directory:', err)
@@ -398,10 +416,150 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
     }
   }
 
+  const clearPollingTimeout = () => {
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current)
+      pollTimeoutRef.current = null
+    }
+  }
+
+  const stopPolling = () => {
+    isPollingLoopActiveRef.current = false
+    setIsPolling(false)
+    clearPollingTimeout()
+  }
+
+  const loadDiscordWebhookUrl = () => {
+    if (typeof window === 'undefined') return null
+    const stored = localStorage.getItem(DISCORD_WEBHOOK_STORAGE_KEY)?.trim() ?? ''
+    return stored || null
+  }
+
+  const handleChangeWebhookUrl = () => {
+    if (typeof window === 'undefined') return
+    const current = discordWebhookUrl ?? ''
+    const next = window.prompt(
+      'Masukkan Discord Webhook URL. Kosongkan untuk menonaktifkan webhook.',
+      current
+    )
+
+    if (next === null) return
+
+    const trimmed = next.trim()
+    if (!trimmed) {
+      localStorage.removeItem(DISCORD_WEBHOOK_STORAGE_KEY)
+      setDiscordWebhookUrl(null)
+      setError('')
+      return
+    }
+
+    localStorage.setItem(DISCORD_WEBHOOK_STORAGE_KEY, trimmed)
+    setDiscordWebhookUrl(trimmed)
+    setError('')
+  }
+
+  const sendDiscordSuccessWebhook = async (scan: DirectoryScanResult) => {
+    const dynamicWebhookUrl = loadDiscordWebhookUrl()
+
+    if (!dynamicWebhookUrl) {
+      return
+    }
+
+    const body = {
+      username: 'n8n Automation',
+      avatar_url: 'https://n8n.io/favicon.ico',
+      embeds: [
+        {
+          title: '✅ Image berhasil di simpan',
+          color: 5763719,
+          fields: [
+            {
+              name: '📁 cek image',
+              value: `Semua file selesai (${scan.completedVideoFiles}/${scan.totalVideoFiles}).\n${scan.completedFileNames.join('\n')}`,
+              inline: false
+            },
+            {
+              name: '🕐 Waktu',
+              value: new Date().toLocaleString('id-ID', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+              }),
+              inline: false
+            }
+          ],
+          footer: {
+            text: 'n8n YouTube Automation Pipeline'
+          }
+        }
+      ]
+    }
+
+    const response = await fetch(dynamicWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Webhook Discord gagal (${response.status})`)
+    }
+  }
+
+  const scheduleNextPoll = () => {
+    clearPollingTimeout()
+    pollTimeoutRef.current = window.setTimeout(() => {
+      void pollDirectoryOnce()
+    }, POLLING_INTERVAL_MS)
+  }
+
+  const pollDirectoryOnce = async () => {
+    if (!directoryHandle || !isPollingLoopActiveRef.current) {
+      stopPolling()
+      return
+    }
+
+    const scan = await readDirectoryFiles(directoryHandle, true)
+    if (!scan || !isPollingLoopActiveRef.current) return
+
+    if (scan.totalProgressFiles === 0) {
+      stopPolling()
+      return
+    }
+
+    const isAllSuccess = scan.totalVideoFiles > 0 && scan.completedVideoFiles === scan.totalVideoFiles
+    if (isAllSuccess && !hasSentDiscordWebhookRef.current) {
+      try {
+        hasSentDiscordWebhookRef.current = true
+        await sendDiscordSuccessWebhook(scan)
+      } catch (err: any) {
+        hasSentDiscordWebhookRef.current = false
+        setError(err?.message || 'Gagal mengirim webhook Discord')
+      }
+    }
+
+    scheduleNextPoll()
+  }
+
+  const startPolling = () => {
+    if (!directoryHandle) return
+    if (isPollingLoopActiveRef.current) return
+    isPollingLoopActiveRef.current = true
+    setIsPolling(true)
+    void pollDirectoryOnce()
+  }
+
   // Read files from directory
-  const readDirectoryFiles = async (handle: FileSystemDirectoryHandle) => {
+  const readDirectoryFiles = async (
+    handle: FileSystemDirectoryHandle,
+    silent = false
+  ): Promise<DirectoryScanResult | null> => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const fileList: FileInfo[] = []
       const progressFiles = new Map<string, File>() // Map base name to progress file
 
@@ -466,11 +624,21 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
       // Sort by last modified (newest first)
       fileList.sort((a, b) => b.lastModified - a.lastModified)
       setFiles(fileList)
+      const completedVideoFiles = fileList.filter((f) => f.progressData?.progress === 'end').length
+      return {
+        totalVideoFiles: fileList.length,
+        totalProgressFiles: progressFiles.size,
+        completedVideoFiles,
+        completedFileNames: fileList
+          .filter((f) => f.progressData?.progress === 'end')
+          .map((f) => f.name)
+      }
     } catch (err: any) {
       console.error('[PROGRESS] Error reading directory:', err)
       setError(err.message || 'Gagal membaca file dari directory')
+      return null
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -478,6 +646,7 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
   const refreshFiles = async () => {
     if (directoryHandle) {
       await readDirectoryFiles(directoryHandle)
+      if (!isPollingLoopActiveRef.current) startPolling()
     } else {
       setError('Silakan pilih directory terlebih dahulu')
     }
@@ -538,6 +707,8 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
 
   // Restore directory handle on mount
   useEffect(() => {
+    setDiscordWebhookUrl(loadDiscordWebhookUrl())
+
     const restoreDirectory = async () => {
       if (!isFileSystemAccessSupported()) {
         setIsRestoring(false)
@@ -560,6 +731,8 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
             
             // Read files from restored directory
             await readDirectoryFiles(handle)
+            isPollingLoopActiveRef.current = false
+            startPolling()
             console.log('[PROGRESS] Directory restored successfully')
           } else {
             console.log('[PROGRESS] Stored directory handle is no longer accessible')
@@ -584,6 +757,10 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
     }
 
     restoreDirectory()
+
+    return () => {
+      stopPolling()
+    }
   }, [])
 
   // Clear directory handle from IndexedDB
@@ -670,8 +847,26 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
               Directory: {directoryPath}
             </p>
           )}
+          <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.8rem', color: '#6c757d' }}>
+            Webhook: {discordWebhookUrl ? 'aktif' : 'null (nonaktif)'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={handleChangeWebhookUrl}
+            disabled={loading}
+            style={{
+              padding: '0.5rem 1rem',
+              background: discordWebhookUrl ? '#6f42c1' : '#adb5bd',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            🔗 Change Webhook URL
+          </button>
           {directoryHandle && (
             <>
               <button
@@ -690,7 +885,24 @@ export default function ProgressTracker({ apiUrl }: ProgressTrackerProps) {
                 🔄 Refresh
               </button>
               <button
+                onClick={isPolling ? stopPolling : startPolling}
+                disabled={loading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: isPolling ? '#fd7e14' : '#20c997',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.6 : 1
+                }}
+              >
+                {isPolling ? '⏸️ Stop Polling' : '▶️ Start Polling'}
+              </button>
+              <button
                 onClick={async () => {
+                  stopPolling()
+                  hasSentDiscordWebhookRef.current = false
                   setDirectoryHandle(null)
                   setDirectoryPath('')
                   setFiles([])

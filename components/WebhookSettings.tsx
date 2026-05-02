@@ -18,11 +18,26 @@ const inputStyle: CSSProperties = {
   fontSize: '0.9rem'
 }
 
+const textareaStyle: CSSProperties = {
+  ...inputStyle,
+  minHeight: '120px',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+  fontSize: '0.82rem',
+  lineHeight: 1.45,
+  resize: 'vertical' as const
+}
+
+const queryTextareaStyle: CSSProperties = {
+  ...textareaStyle,
+  minHeight: '76px'
+}
+
 export default function WebhookSettings() {
   const [profiles, setProfiles] = useState<WebhookProfile[]>(() => loadWebhookProfiles())
   const [selectedId, setSelectedId] = useState<string>(() => loadWebhookProfiles()[0]?.id || '')
   const [showDetail, setShowDetail] = useState(false)
   const [message, setMessage] = useState('')
+  const [pickingWebhookDir, setPickingWebhookDir] = useState(false)
 
   const selectedProfile = useMemo(
     () => profiles.find((p) => p.id === selectedId) || profiles[0],
@@ -34,6 +49,30 @@ export default function WebhookSettings() {
   const updateProfile = (patch: Partial<WebhookProfile>) => {
     if (!selectedProfile) return
     setProfiles((prev) => prev.map((item) => (item.id === selectedProfile.id ? { ...item, ...patch } : item)))
+  }
+
+  const pickWebhookDirectory = async () => {
+    if (!selectedProfile) return
+    if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
+      setMessage('Folder selector tidak didukung di browser ini. Gunakan Chrome/Edge terbaru atau isi dirPath manual.')
+      setTimeout(() => setMessage(''), 4000)
+      return
+    }
+    try {
+      setPickingWebhookDir(true)
+      const handle = await (window as unknown as { showDirectoryPicker: (options?: { mode?: string }) => Promise<{ name: string }> }).showDirectoryPicker({ mode: 'read' })
+      updateProfile({ dirPath: handle.name })
+      setMessage(`dirPath disimpan (nama folder): "${handle.name}". Klik Simpan untuk menulis ke localStorage.`)
+      setTimeout(() => setMessage(''), 3500)
+    } catch (err: unknown) {
+      const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: string }).name) : ''
+      if (name !== 'AbortError') {
+        setMessage(err instanceof Error ? err.message : 'Gagal memilih folder')
+        setTimeout(() => setMessage(''), 3500)
+      }
+    } finally {
+      setPickingWebhookDir(false)
+    }
   }
 
   const updateEvent = (eventName: 'build_started' | 'build_success' | 'build_failed') => {
@@ -117,6 +156,7 @@ export default function WebhookSettings() {
         <h3 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Webhook Trigger Settings</h3>
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
           Config ini berbentuk list dan disimpan di localhost browser (`localStorage`), jadi bisa punya banyak webhook dengan nama berbeda.
+          Di n8n, <code style={{ fontSize: '0.82rem' }}>params</code> biasanya terisi hanya jika node Webhook memakai path dinamis (mis. <code style={{ fontSize: '0.82rem' }}>/:id</code>) dan URL yang dipanggil cocok dengan pola itu; data dari VMX default-nya ada di body JSON.
         </p>
       </div>
 
@@ -232,6 +272,20 @@ export default function WebhookSettings() {
             />
           </div>
 
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem' }}>Query string (JSON → ?key=value)</label>
+            <textarea
+              style={queryTextareaStyle}
+              value={selectedProfile?.customQueryJson ?? ''}
+              onChange={(e) => updateProfile({ customQueryJson: e.target.value })}
+              placeholder='{"source":"vmx","debug":"1"}'
+              spellCheck={false}
+            />
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Object JSON di sini diubah menjadi query pada URL (kolom <code style={{ fontSize: '0.76rem' }}>query</code> di n8n). Kosongkan jika tidak perlu.
+            </p>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.35rem' }}>Method</label>
@@ -270,6 +324,56 @@ export default function WebhookSettings() {
               />
             </div>
           )}
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem' }}>dirPath (body JSON)</label>
+            <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
+              <input
+                style={{ ...inputStyle, flex: '1 1 200px', minWidth: '160px' }}
+                value={selectedProfile?.dirPath ?? ''}
+                onChange={(e) => updateProfile({ dirPath: e.target.value })}
+                placeholder="/path/absolut/atau/nama-folder"
+              />
+              <button
+                type="button"
+                onClick={pickWebhookDirectory}
+                disabled={pickingWebhookDir}
+                style={{
+                  padding: '0.65rem 0.95rem',
+                  border: '1px solid #dbe3ef',
+                  borderRadius: '10px',
+                  background: pickingWebhookDir ? '#f1f5f9' : '#ffffff',
+                  color: pickingWebhookDir ? '#94a3b8' : '#0f172a',
+                  cursor: pickingWebhookDir ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {pickingWebhookDir ? 'Membuka…' : 'Pilih folder'}
+              </button>
+            </div>
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Nilai ini dikirim di body sebagai <code style={{ fontSize: '0.76rem' }}>dirPath</code>. Di browser, API{' '}
+              <code style={{ fontSize: '0.76rem' }}>showDirectoryPicker</code> sengaja tidak memberi path absolut (alasan privasi/keamanan: halaman web tidak boleh tahu struktur disk kamu). Yang tersedia standar-nya hanya nama folder yang dipilih. Untuk path penuh seperti{' '}
+              <code style={{ fontSize: '0.76rem' }}>/Users/.../Downloads/nama-folder</code>, ketik atau tempel manual di kolom ini.
+            </p>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem' }}>Body JSON tambahan</label>
+            <textarea
+              style={textareaStyle}
+              value={selectedProfile?.customBodyJson ?? ''}
+              onChange={(e) => updateProfile({ customBodyJson: e.target.value })}
+              placeholder='{"workflowId":"...","tags":["vmx"]}'
+              spellCheck={false}
+            />
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Object JSON yang digabung ke body: field bawaan VMX (source, event, …) lalu isian ini, lalu data dari event build.
+              Jika bukan object JSON yang valid, isian diabaikan saat kirim.
+            </p>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem' }}>
             <div>

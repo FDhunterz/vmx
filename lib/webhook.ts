@@ -5,9 +5,15 @@ export interface WebhookProfile {
   name: string
   enabled: boolean
   webhookUrl: string
+  /** Object JSON → dikonversi ke query string (?a=b&...) dan digabung ke URL request */
+  customQueryJson: string
   method: 'POST' | 'PUT' | 'PATCH'
   authType: 'none' | 'bearer'
   bearerToken: string
+  /** JSON tambahan yang digabung ke body request (object), setelah field bawaan VMX, sebelum payload event */
+  customBodyJson: string
+  /** Disematkan ke body sebagai `dirPath` (mis. dari folder picker atau input manual) */
+  dirPath: string
   timeoutMs: number
   retryEnabled: boolean
   maxRetries: number
@@ -29,9 +35,12 @@ export const createDefaultWebhookProfile = (): WebhookProfile => ({
   name: 'upload-youtube',
   enabled: false,
   webhookUrl: 'http://localhost:5678/webhook/upload-youtube',
+  customQueryJson: '',
   method: 'POST',
   authType: 'none',
   bearerToken: '',
+  customBodyJson: '',
+  dirPath: '',
   timeoutMs: 10000,
   retryEnabled: true,
   maxRetries: 2,
@@ -70,6 +79,62 @@ export const saveWebhookProfiles = (profiles: WebhookProfile[]) => {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+const appendQueryFromJson = (baseUrl: string, queryJson: string | undefined): string => {
+  const trimmed = (queryJson ?? '').trim()
+  if (!trimmed) return baseUrl
+  let parsed: Record<string, unknown>
+  try {
+    const p = JSON.parse(trimmed) as unknown
+    if (p === null || typeof p !== 'object' || Array.isArray(p)) {
+      console.warn('[VMX] customQueryJson harus berupa object JSON. Query string diabaikan.')
+      return baseUrl
+    }
+    parsed = p as Record<string, unknown>
+  } catch (e) {
+    console.warn('[VMX] customQueryJson tidak valid JSON. Query string diabaikan.', e)
+    return baseUrl
+  }
+  const sp = new URLSearchParams()
+  for (const [k, v] of Object.entries(parsed)) {
+    if (v === undefined || v === null) continue
+    if (typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string') {
+      sp.append(k, String(v))
+    } else {
+      sp.append(k, JSON.stringify(v))
+    }
+  }
+  const extra = sp.toString()
+  if (!extra) return baseUrl
+  try {
+    const u = new URL(baseUrl)
+    const merged = new URLSearchParams(u.search)
+    for (const [k, val] of sp.entries()) {
+      merged.set(k, val)
+    }
+    u.search = merged.toString()
+    return u.toString()
+  } catch {
+    const sep = baseUrl.includes('?') ? '&' : '?'
+    return `${baseUrl}${sep}${extra}`
+  }
+}
+
+const parseCustomBodyJson = (raw: string | undefined): Record<string, unknown> | null => {
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed) return null
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    console.warn('[VMX] customBodyJson harus berupa object JSON (bukan array/primitif). Body tambahan diabaikan.')
+    return null
+  } catch (e) {
+    console.warn('[VMX] customBodyJson tidak valid JSON. Body tambahan diabaikan.', e)
+    return null
+  }
+}
+
 export const triggerWebhook = async (
   event: WebhookEventName,
   payload: Record<string, unknown>
@@ -87,14 +152,20 @@ export const triggerWebhook = async (
       headers.Authorization = `Bearer ${profile.bearerToken.trim()}`
     }
 
+    const customLayer = parseCustomBodyJson(profile.customBodyJson)
+    const dirPathTrimmed = profile.dirPath?.trim() ?? ''
     const requestBody = {
       source: 'vmx',
       profileId: profile.id,
       profileName: profile.name,
       event,
       timestamp: new Date().toISOString(),
+      ...(customLayer ?? {}),
+      ...(dirPathTrimmed ? { dirPath: dirPathTrimmed } : {}),
       ...payload
     }
+
+    const requestUrl = appendQueryFromJson(profile.webhookUrl, profile.customQueryJson)
 
     const attempts = profile.retryEnabled ? Math.max(1, profile.maxRetries + 1) : 1
 
@@ -103,7 +174,7 @@ export const triggerWebhook = async (
       const timeoutId = setTimeout(() => controller.abort(), Math.max(1000, profile.timeoutMs))
 
       try {
-        const response = await fetch(profile.webhookUrl, {
+        const response = await fetch(requestUrl, {
           method: profile.method,
           headers,
           body: JSON.stringify(requestBody),
